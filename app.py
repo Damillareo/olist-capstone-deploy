@@ -164,7 +164,7 @@ with tab_overview:
     try:
         df_chart1 = get_top_categories(conn)
         st.plotly_chart(create_chart1(df_chart1), use_container_width=True)
-        st.info("**Finding:** No single category dominates. `health_beauty` leads at 9.39% of translated item revenue. The top 10 categories together only account for 63.22% of revenue, highlighting a strong long-tail distribution where smaller niche categories collectively drive a significant portion of sales.")
+      
     except Exception as e:
         st.error(f"Error: {e}")
 
@@ -174,7 +174,7 @@ with tab_theme:
     try:
         df_chart2 = get_revenue_over_time(conn, selected_year=selected_year)
         st.plotly_chart(create_chart2(df_chart2), use_container_width=True)
-        st.info("**Finding:** Revenue for the top 5 categories grew steadily through 2017, peaking massively in Q1 2018. However, note that 2016 only has 3 active months, and 2016 Q4 has zero orders. The gap is real, not a bug.")
+      
     except Exception as e:
         st.error(f"Error: {e}")
 
@@ -183,7 +183,7 @@ with tab_theme:
     try:
         df_chart3 = get_avg_price_by_category(conn)
         st.plotly_chart(create_chart3(df_chart3), use_container_width=True)
-        st.info("**Finding:** High-volume categories like bed & bath do not command high prices. The categories with the highest average prices (like computers) sell fewer units but generate high revenue per order, making them high-ticket anchors.")
+        
     except Exception as e:
         st.error(f"Error: {e}")
 
@@ -192,7 +192,7 @@ with tab_theme:
     try:
         df_chart4 = get_volume_vs_revenue(conn)
         st.plotly_chart(create_chart4(df_chart4), use_container_width=True)
-        st.info("**Finding:** There is a clear dichotomy. `bed_bath_table` drives massive volume but low revenue per order (dark blue). Conversely, `watches_gifts` (yellow) generates nearly identical total revenue with half the order volume, proving it is a high-ticket, high-margin category.")
+      
     except Exception as e:
         st.error(f"Error: {e}")
 
@@ -213,10 +213,4 @@ with tab_detail:
 
     st.markdown("---")
     st.subheader("Data Limitation: The Lossy Join")
-    st.warning(f"""
-    **Denominator Choice:** The market share percentages in Chart 5 are calculated using the **translated category revenue** as the denominator. 
-    
-    This is because the `categories` translation table is a lossy join. As verified by Q7, exactly **623 products** and **R$ 185,049.76** of revenue disappear from the dataset the moment you join the `categories` table, because their category names do not exist in the translation file. 
-    
-    If we used the *total item revenue* as the denominator instead, `health_beauty`'s market share would be **{alt_pct}%** instead of the **{df_chart5.iloc[0]['pct_share']}%** shown in the chart. The chart deliberately uses the translated denominator to accurately reflect the performance of known categories, but the missing revenue is a real data limitation.
-    """)
+   
