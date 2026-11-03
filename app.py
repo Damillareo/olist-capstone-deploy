@@ -18,10 +18,11 @@ st.markdown("""
 @st.cache_resource
 def get_db_connection():
     conn = sqlite3.connect(':memory:', check_same_thread=False)
-    pd.read_csv('olist_dataset/olist_order_items_dataset.csv').to_sql('order_items', conn, index=False)
-    pd.read_csv('olist_dataset/olist_orders_dataset.csv').to_sql('orders', conn, index=False)
-    pd.read_csv('olist_dataset/olist_products_dataset.csv').to_sql('products', conn, index=False)
-    pd.read_csv('olist_dataset/product_category_name_translation.csv').to_sql('categories', conn, index=False)
+    
+    pd.read_csv('olist_order_items_dataset.csv').to_sql('order_items', conn, index=False)
+    pd.read_csv('olist_orders_dataset.csv').to_sql('orders', conn, index=False)
+    pd.read_csv('olist_products_dataset.csv').to_sql('products', conn, index=False)
+    pd.read_csv('product_category_name_translation.csv').to_sql('categories', conn, index=False)
     return conn
 
 conn = get_db_connection()
