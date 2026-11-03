@@ -18,25 +18,28 @@ st.markdown("""
 @st.cache_resource
 def get_db_connection():
     conn = sqlite3.connect(':memory:', check_same_thread=False)
-    pd.read_csv('olist_order_items_dataset.csv').to_sql('order_items', conn, index=False)
-    pd.read_csv('olist_orders_dataset.csv').to_sql('orders', conn, index=False)
-    pd.read_csv('olist_products_dataset.csv').to_sql('products', conn, index=False)
-    pd.read_csv('product_category_name_translation.csv').to_sql('categories', conn, index=False)
-    # Load customers in case you want to add the State filter later
-    # pd.read_csv('olist_customers_dataset.csv').to_sql('customers', conn, index=False)
+    pd.read_csv('olist_dataset/olist_order_items_dataset.csv').to_sql('order_items', conn, index=False)
+    pd.read_csv('olist_dataset/olist_orders_dataset.csv').to_sql('orders', conn, index=False)
+    pd.read_csv('olist_dataset/olist_products_dataset.csv').to_sql('products', conn, index=False)
+    pd.read_csv('olist_dataset/product_category_name_translation.csv').to_sql('categories', conn, index=False)
     return conn
 
 conn = get_db_connection()
 
-# --- 3. Query Helpers & Functions ---
+# --- 3. Query Helpers ---
 def multi_params(multi_json):
     return (multi_json, multi_json)
 
 def year_params(year):
     return (year, year)
 
+# The new helper for charts with BOTH filters
+def year_multi(year, multi_json):
+    return (year, year, multi_json, multi_json)
+
+# --- 4. Query Functions ---
 def get_kpis(conn, selected_year="All"):
-    params = year_params(selected_year)
+    params = (selected_year, selected_year, selected_year, selected_year, selected_year, selected_year)
     query = """
     SELECT (SELECT ROUND(SUM(i.price + i.freight_value),2) FROM order_items i 
             JOIN orders o ON i.order_id=o.order_id
@@ -51,18 +54,18 @@ def get_kpis(conn, selected_year="All"):
            (SELECT ROUND(AVG(price),2) FROM order_items) AS avg_item_price,
            (SELECT COUNT(o.order_id) FROM orders o
             WHERE (? = 'All' OR strftime('%Y', o.order_purchase_timestamp) = ?)) AS total_orders
-            """
-    # We have to pass the year 3 times because there are 3 subqueries using it
-    df = pd.read_sql(query, conn, params=(selected_year, selected_year, selected_year, selected_year, selected_year, selected_year))
+    """
+    df = pd.read_sql(query, conn, params=params)
     return df.iloc[0]
 
-def get_top_categories(conn, selected_categories=["All"]):
+def get_top_categories(conn, selected_year="All", selected_categories=["All"]):
     cat_json = json.dumps(selected_categories if "All" not in selected_categories else [])
-    params = multi_params(cat_json)
+    params = year_multi(selected_year, cat_json)
     query = """
     SELECT t.product_category_name_english AS category, ROUND(SUM(i.price),2) AS revenue, COUNT(DISTINCT i.order_id) AS orders
     FROM order_items i JOIN orders o ON i.order_id = o.order_id JOIN products p ON i.product_id = p.product_id JOIN categories t ON p.product_category_name = t.product_category_name
-    WHERE (? = '[]' OR t.product_category_name_english IN (SELECT value FROM json_each(?)))
+    WHERE (? = 'All' OR strftime('%Y', o.order_purchase_timestamp) = ?)
+    AND (? = '[]' OR t.product_category_name_english IN (SELECT value FROM json_each(?)))
     GROUP BY category ORDER BY revenue DESC LIMIT 10
     """
     return pd.read_sql(query, conn, params=params)
@@ -80,36 +83,39 @@ def get_revenue_over_time(conn, selected_year="All"):
     df['Year_Quarter'] = df['year'] + " Q" + df['quarter'].astype(str)
     return df
 
-def get_avg_price_by_category(conn, selected_categories=["All"]):
+def get_avg_price_by_category(conn, selected_year="All", selected_categories=["All"]):
     cat_json = json.dumps(selected_categories if "All" not in selected_categories else [])
-    params = multi_params(cat_json)
+    params = year_multi(selected_year, cat_json)
     query = """
     SELECT t.product_category_name_english AS category, ROUND(AVG(i.price),2) AS avg_price, ROUND(MIN(i.price),2) AS min_price, ROUND(MAX(i.price),2) AS max_price
     FROM order_items i JOIN orders o ON i.order_id = o.order_id JOIN products p ON i.product_id = p.product_id JOIN categories t ON p.product_category_name = t.product_category_name
-    WHERE (? = '[]' OR t.product_category_name_english IN (SELECT value FROM json_each(?)))
+    WHERE (? = 'All' OR strftime('%Y', o.order_purchase_timestamp) = ?)
+    AND (? = '[]' OR t.product_category_name_english IN (SELECT value FROM json_each(?)))
     GROUP BY category ORDER BY avg_price DESC LIMIT 10
     """
     return pd.read_sql(query, conn, params=params)
 
-def get_volume_vs_revenue(conn, selected_categories=["All"]):
+def get_volume_vs_revenue(conn, selected_year="All", selected_categories=["All"]):
     cat_json = json.dumps(selected_categories if "All" not in selected_categories else [])
-    params = multi_params(cat_json)
+    params = year_multi(selected_year, cat_json)
     query = """
     SELECT t.product_category_name_english AS category, COUNT(DISTINCT i.order_id) AS orders, ROUND(SUM(i.price),2) AS revenue, ROUND(SUM(i.price)/COUNT(DISTINCT i.order_id),2) AS revenue_per_order
     FROM order_items i JOIN orders o ON i.order_id = o.order_id JOIN products p ON i.product_id = p.product_id JOIN categories t ON p.product_category_name = t.product_category_name
-    WHERE (? = '[]' OR t.product_category_name_english IN (SELECT value FROM json_each(?)))
+    WHERE (? = 'All' OR strftime('%Y', o.order_purchase_timestamp) = ?)
+    AND (? = '[]' OR t.product_category_name_english IN (SELECT value FROM json_each(?)))
     GROUP BY category ORDER BY revenue DESC LIMIT 15
     """
     return pd.read_sql(query, conn, params=params)
 
-def get_market_share(conn, selected_categories=["All"]):
+def get_market_share(conn, selected_year="All", selected_categories=["All"]):
     cat_json = json.dumps(selected_categories if "All" not in selected_categories else [])
-    params = multi_params(cat_json)
+    params = year_multi(selected_year, cat_json)
     query = """
     WITH filtered AS (
         SELECT t.product_category_name_english AS category, SUM(i.price) AS revenue
         FROM order_items i JOIN orders o ON i.order_id = o.order_id JOIN products p ON i.product_id = p.product_id JOIN categories t ON p.product_category_name = t.product_category_name
-        WHERE (? = '[]' OR t.product_category_name_english IN (SELECT value FROM json_each(?)))
+        WHERE (? = 'All' OR strftime('%Y', o.order_purchase_timestamp) = ?)
+        AND (? = '[]' OR t.product_category_name_english IN (SELECT value FROM json_each(?)))
         GROUP BY category
     )
     SELECT category, ROUND(revenue,2) AS revenue, ROUND(100.0*revenue/(SELECT SUM(revenue) FROM filtered),2) AS pct_share
@@ -117,10 +123,19 @@ def get_market_share(conn, selected_categories=["All"]):
     """
     return pd.read_sql(query, conn, params=params)
 
-def get_total_all_revenue(conn):
-    return pd.read_sql("SELECT SUM(price) as total_rev FROM order_items", conn)['total_rev'].iloc[0]
+def get_total_all_revenue(conn, selected_year="All"):
+    if selected_year == "All":
+        query = "SELECT SUM(price) as total_rev FROM order_items"
+        return pd.read_sql(query, conn)['total_rev'].iloc[0]
+    else:
+        query = """
+        SELECT SUM(i.price) as total_rev FROM order_items i 
+        JOIN orders o ON i.order_id = o.order_id 
+        WHERE strftime('%Y', o.order_purchase_timestamp) = ?
+        """
+        return pd.read_sql(query, conn, params=(selected_year,))['total_rev'].iloc[0]
 
-# --- 4. Chart Generation Functions (For Code Quality Marks) ---
+# --- 5. Chart Generation Functions ---
 def create_chart1(df):
     fig = px.bar(df, x='revenue', y='category', orientation='h', labels={'revenue': 'Revenue (R$)', 'category': 'Category'}, color='revenue', color_continuous_scale='Blues')
     fig.update_layout(yaxis={'categoryorder':'total ascending'})
@@ -148,12 +163,11 @@ def create_chart5(df):
     fig.update_traces(texttemplate='%{text}%', textposition='outside')
     return fig
 
-# --- 5. Sidebar Filters ---
+# --- 6. Sidebar Filters ---
 st.sidebar.header("Dashboard Filters")
 selected_year = st.sidebar.selectbox("Year", ["All", "2016", "2017", "2018"])
-# (State filter can be added here later once you load the customers table)
 
-# --- 6. App Layout & Tabs ---
+# --- 7. App Layout & Tabs ---
 tab_overview, tab_theme, tab_detail = st.tabs(["Overview", "Category Performance", "Detail & Method"])
 
 with tab_overview:
@@ -172,9 +186,8 @@ with tab_overview:
     st.markdown("---")
     st.subheader("Chart 1: Top 10 Categories by Revenue")
     try:
-        df_chart1 = get_top_categories(conn)
+        df_chart1 = get_top_categories(conn, selected_year=selected_year)
         st.plotly_chart(create_chart1(df_chart1), use_container_width=True)
-      
     except Exception as e:
         st.error(f"Error: {e}")
 
@@ -184,25 +197,22 @@ with tab_theme:
     try:
         df_chart2 = get_revenue_over_time(conn, selected_year=selected_year)
         st.plotly_chart(create_chart2(df_chart2), use_container_width=True)
-      
     except Exception as e:
         st.error(f"Error: {e}")
 
     st.markdown("---") 
     st.subheader("Chart 3: Average Item Price by Category (Top 10)")
     try:
-        df_chart3 = get_avg_price_by_category(conn)
+        df_chart3 = get_avg_price_by_category(conn, selected_year=selected_year)
         st.plotly_chart(create_chart3(df_chart3), use_container_width=True)
-        
     except Exception as e:
         st.error(f"Error: {e}")
 
     st.markdown("---") 
     st.subheader("Chart 4: Order Volume vs. Revenue (Top 15 Categories)")
     try:
-        df_chart4 = get_volume_vs_revenue(conn)
+        df_chart4 = get_volume_vs_revenue(conn, selected_year=selected_year)
         st.plotly_chart(create_chart4(df_chart4), use_container_width=True)
-      
     except Exception as e:
         st.error(f"Error: {e}")
 
@@ -211,8 +221,8 @@ with tab_detail:
     
     st.subheader("Chart 5: Market Share of Top 10 Categories")
     try:
-        df_chart5 = get_market_share(conn)
-        total_all_rev = get_total_all_revenue(conn)
+        df_chart5 = get_market_share(conn, selected_year=selected_year)
+        total_all_rev = get_total_all_revenue(conn, selected_year=selected_year)
         top_cat_rev = df_chart5.iloc[0]['revenue']
         alt_pct = round((top_cat_rev / total_all_rev) * 100, 2)
         
@@ -223,4 +233,10 @@ with tab_detail:
 
     st.markdown("---")
     st.subheader("Data Limitation: The Lossy Join")
-   
+    st.warning(f"""
+    **Denominator Choice:** The market share percentages in Chart 5 are calculated using the **translated category revenue** as the denominator. 
+    
+    This is because the `categories` translation table is a lossy join. As verified by Q7, exactly **623 products** and **R$ 185,049.76** of revenue disappear from the dataset the moment you join the `categories` table, because their category names do not exist in the translation file. 
+    
+    If we used the *total item revenue* as the denominator instead, `health_beauty`'s market share would be **{alt_pct}%** instead of the **{df_chart5.iloc[0]['pct_share']}%** shown in the chart. The chart deliberately uses the translated denominator to accurately reflect the performance of known categories, but the missing revenue is a real data limitation.
+    """)
