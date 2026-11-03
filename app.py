@@ -35,15 +35,25 @@ def multi_params(multi_json):
 def year_params(year):
     return (year, year)
 
-def get_kpis(conn):
+def get_kpis(conn, selected_year="All"):
+    params = year_params(selected_year)
     query = """
-    SELECT (SELECT ROUND(SUM(i.price + i.freight_value),2) FROM order_items i JOIN orders o ON i.order_id=o.order_id) AS total_gmv,
-           (SELECT ROUND(SUM(i.price),2) FROM order_items i JOIN orders o ON i.order_id=o.order_id JOIN products p ON i.product_id=p.product_id JOIN categories t ON p.product_category_name=t.product_category_name WHERE t.product_category_name_english='health_beauty') AS top_category_rev,
+    SELECT (SELECT ROUND(SUM(i.price + i.freight_value),2) FROM order_items i 
+            JOIN orders o ON i.order_id=o.order_id
+            WHERE (? = 'All' OR strftime('%Y', o.order_purchase_timestamp) = ?)) AS total_gmv,
+           (SELECT ROUND(SUM(i.price),2) FROM order_items i 
+            JOIN orders o ON i.order_id=o.order_id
+            JOIN products p ON i.product_id=p.product_id
+            JOIN categories t ON p.product_category_name=t.product_category_name
+            WHERE t.product_category_name_english='health_beauty'
+            AND (? = 'All' OR strftime('%Y', o.order_purchase_timestamp) = ?)) AS top_category_rev,
            (SELECT COUNT(*) FROM categories) AS translated_cats,
            (SELECT ROUND(AVG(price),2) FROM order_items) AS avg_item_price,
-           (SELECT COUNT(*) FROM order_items) AS total_items
+           (SELECT COUNT(*) FROM order_items i JOIN orders o ON i.order_id=o.order_id
+            WHERE (? = 'All' OR strftime('%Y', o.order_purchase_timestamp) = ?)) AS total_items
     """
-    df = pd.read_sql(query, conn)
+    # We have to pass the year 3 times because there are 3 subqueries using it
+    df = pd.read_sql(query, conn, params=(selected_year, selected_year, selected_year, selected_year, selected_year, selected_year))
     return df.iloc[0]
 
 def get_top_categories(conn, selected_categories=["All"]):
@@ -149,7 +159,7 @@ tab_overview, tab_theme, tab_detail = st.tabs(["Overview", "Category Performance
 with tab_overview:
     st.header("Headline KPIs")
     try:
-        kpis = get_kpis(conn)
+        kpis = get_kpis(conn, selected_year=selected_year)
         col1, col2, col3, col4, col5 = st.columns([1.8, 1.5, 1, 1, 1])
         col1.metric("Total GMV", f"R$ {kpis['total_gmv']:,.2f}")
         col2.metric("Top Category Rev", f"R$ {kpis['top_category_rev']:,.2f}")
