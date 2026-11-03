@@ -49,9 +49,9 @@ def get_kpis(conn, selected_year="All"):
             AND (? = 'All' OR strftime('%Y', o.order_purchase_timestamp) = ?)) AS top_category_rev,
            (SELECT COUNT(*) FROM categories) AS translated_cats,
            (SELECT ROUND(AVG(price),2) FROM order_items) AS avg_item_price,
-           (SELECT COUNT(*) FROM order_items i JOIN orders o ON i.order_id=o.order_id
-            WHERE (? = 'All' OR strftime('%Y', o.order_purchase_timestamp) = ?)) AS total_items
-    """
+           (SELECT COUNT(o.order_id) FROM orders o
+            WHERE (? = 'All' OR strftime('%Y', o.order_purchase_timestamp) = ?)) AS total_orders
+            """
     # We have to pass the year 3 times because there are 3 subqueries using it
     df = pd.read_sql(query, conn, params=(selected_year, selected_year, selected_year, selected_year, selected_year, selected_year))
     return df.iloc[0]
@@ -165,7 +165,7 @@ with tab_overview:
         col2.metric("Top Category Rev", f"R$ {kpis['top_category_rev']:,.2f}")
         col3.metric("Translated Categories", f"{int(kpis['translated_cats'])}")
         col4.metric("Avg Item Price", f"R$ {kpis['avg_item_price']:,.2f}")
-        col5.metric("Total Items", f"{int(kpis['total_items']):,}")
+        col5.metric("Total Orders", f"{int(kpis['total_orders']):,}")
     except Exception as e:
         st.error(f"Error: {e}")
 
